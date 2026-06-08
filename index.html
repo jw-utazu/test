@@ -1,349 +1,413 @@
-<!-- File: mock_app_osm.html -->
+<!-- File: mock_app_advanced.html -->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>会衆区域管理システム モックアップ (APIキー不要版)</title>
+    <title>会衆区域管理システム モックアップ (要件定義準拠版)</title>
     
-    <!-- Leaflet.js (無料地図ライブラリ) の読み込み -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <style>
-        /* CSS: モバイルファーストのデザイン */
-        body, html {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            font-family: 'Helvetica Neue', Arial, sans-serif;
-            overflow: hidden;
-            background-color: #f0f0f0;
-        }
+        /* ベース設定 */
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Helvetica Neue', Arial, sans-serif; overflow: hidden; background-color: #f5f5f5; }
+        * { box-sizing: border-box; }
 
-        #map {
-            width: 100%;
-            height: 100%;
-            z-index: 1; /* パネルより下にする */
-        }
-
+        /* ヘッダー */
         #header {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            background-color: #4CAF50;
-            color: white;
-            padding: 15px 0;
-            text-align: center;
-            font-size: 18px;
-            font-weight: bold;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-            z-index: 10;
+            position: absolute; top: 0; left: 0; width: 100%; background-color: #2E7D32; color: white;
+            padding: 15px 20px; font-size: 18px; font-weight: bold; display: flex; justify-content: space-between;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3); z-index: 10;
         }
 
+        /* マップエリア */
+        #map { width: 100%; height: 100%; z-index: 1; }
+
+        /* 現在地ボタン (GPS) */
+        #location-btn {
+            position: absolute; bottom: 30px; right: 20px; width: 50px; height: 50px;
+            background-color: white; border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.3); z-index: 10; cursor: pointer; font-size: 24px; color: #2E7D32;
+        }
+
+        /* ボトムシート（スライドパネル） */
         #bottom-sheet {
-            position: absolute;
-            bottom: -100%;
-            left: 0;
-            width: 100%;
-            background-color: white;
-            border-top-left-radius: 20px;
-            border-top-right-radius: 20px;
-            box-shadow: 0 -5px 15px rgba(0,0,0,0.3);
-            transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            z-index: 20;
-            max-height: 80%;
-            display: flex;
-            flex-direction: column;
+            position: absolute; bottom: -100%; left: 0; width: 100%; background-color: white;
+            border-top-left-radius: 20px; border-top-right-radius: 20px; box-shadow: 0 -5px 15px rgba(0,0,0,0.3);
+            transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 20; max-height: 85%; display: flex; flex-direction: column;
         }
+        #bottom-sheet.open { bottom: 0; }
+        .sheet-handle { width: 40px; height: 5px; background-color: #e0e0e0; border-radius: 5px; margin: 12px auto; }
+        #sheet-content { padding: 0 20px 20px 20px; overflow-y: auto; flex-grow: 1; }
 
-        #bottom-sheet.open {
-            bottom: 0;
-        }
-
-        .sheet-handle {
-            width: 40px;
-            height: 5px;
-            background-color: #ccc;
-            border-radius: 5px;
-            margin: 12px auto;
-        }
-
-        #sheet-content {
-            padding: 0 20px 20px 20px;
-            overflow-y: auto;
-        }
-
-        .panel-title {
-            margin-top: 0;
-            margin-bottom: 15px;
-            color: #333;
-            font-size: 18px;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 10px;
-        }
-
-        .room-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
-            gap: 10px;
-        }
-
-        .room-btn {
-            padding: 15px 5px;
-            border: none;
-            border-radius: 8px;
-            color: white;
-            font-weight: bold;
-            font-size: 16px;
-            cursor: pointer;
-            text-align: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .action-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-top: 20px;
-        }
-
-        .action-btn {
-            padding: 20px;
-            border: none;
-            border-radius: 10px;
-            color: white;
-            font-size: 18px;
-            font-weight: bold;
-            cursor: pointer;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
-
-        /* ステータスカラー定義 */
-        .color-blue { background-color: #2196F3; }
-        .color-gray { background-color: #9E9E9E; }
-        .color-yellow { background-color: #FFC107; color: #333 !important;}
-        .color-red { background-color: #F44336; }
-
-        .back-btn {
-            background-color: transparent;
-            color: #4CAF50;
-            border: 2px solid #4CAF50;
-            padding: 8px 15px;
-            border-radius: 20px;
-            cursor: pointer;
-            margin-bottom: 15px;
-            font-weight: bold;
-            display: block;
-        }
-
-        .close-btn {
-            position: absolute;
-            top: 5px;
-            right: 15px;
-            font-size: 28px;
-            color: #999;
-            cursor: pointer;
-            padding: 5px;
-        }
+        /* UI要素 */
+        .panel-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }
+        .panel-title { margin: 0; color: #333; font-size: 18px; }
+        .close-btn { font-size: 28px; color: #999; cursor: pointer; line-height: 1; }
         
-        /* カスタムマーカー用のCSS */
+        /* アパート用 一括操作トグル */
+        .mode-toggle {
+            background-color: #f0f0f0; border: 1px solid #ccc; padding: 8px 12px; border-radius: 20px;
+            font-size: 14px; cursor: pointer; color: #555; display: flex; align-items: center; gap: 5px;
+        }
+        .mode-toggle.active { background-color: #E8F5E9; border-color: #4CAF50; color: #2E7D32; font-weight: bold; }
+
+        /* 部屋グリッド */
+        .room-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .room-btn {
+            padding: 15px 5px; border: none; border-radius: 8px; color: white; font-weight: bold; font-size: 16px;
+            cursor: pointer; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: relative; transition: all 0.2s;
+        }
+        /* 一括選択中のスタイル */
+        .room-btn.selected { transform: scale(0.9); box-shadow: 0 0 0 4px #2196F3; }
+        .room-btn.selected::after {
+            content: "✓"; position: absolute; top: -8px; right: -8px; background: #2196F3; color: white;
+            width: 20px; height: 20px; border-radius: 50%; font-size: 14px; display: flex; align-items: center; justify-content: center;
+        }
+
+        /* 記録アクションボタン */
+        .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        .action-btn { padding: 15px; border: none; border-radius: 10px; color: white; font-size: 16px; font-weight: bold; cursor: pointer; }
+        
+        /* メモ入力欄 */
+        .memo-area { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px; margin-top: 15px; font-size: 16px; font-family: inherit; resize: vertical; min-height: 80px; }
+
+        /* カラー定義 */
+        .bg-blue { background-color: #2196F3; } /* 未訪問 */
+        .bg-gray { background-color: #9E9E9E; } /* 会えた */
+        .bg-yellow { background-color: #FFC107; color: #333 !important;} /* 留守 */
+        .bg-red { background-color: #F44336; } /* 訪問不可 */
+
+        .back-btn { background-color: transparent; color: #2E7D32; border: 1px solid #2E7D32; padding: 8px 15px; border-radius: 20px; cursor: pointer; margin-bottom: 15px; font-weight: bold; }
+
+        /* 現在地アイコン（Leaflet） */
+        .current-location-icon {
+            background-color: #2196F3; width: 16px; height: 16px; border-radius: 50%;
+            border: 3px solid white; box-shadow: 0 0 10px rgba(33,150,243,0.8);
+        }
+        /* カスタムピンアイコン */
         .custom-marker {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            border-radius: 50%;
-            color: white;
-            font-weight: bold;
-            font-size: 14px;
-            border: 2px solid white;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+            display: flex; justify-content: center; align-items: center; border-radius: 50%; color: white;
+            font-weight: bold; font-size: 14px; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.4);
         }
     </style>
 </head>
 <body>
 
-    <div id="header">区域01 (貸出中)</div>
+    <div id="header">
+        <span>☰</span>
+        <span>区域01 (貸出中)</span>
+        <span>⋮</span>
+    </div>
     
-    <!-- 地図表示エリア -->
     <div id="map"></div>
 
-    <!-- 下部操作パネル -->
+    <!-- GPS現在地ボタン -->
+    <div id="location-btn" onclick="locateUser()">📍</div>
+
     <div id="bottom-sheet">
         <div class="sheet-handle"></div>
-        <div class="close-btn" onclick="closePanel()">×</div>
         <div id="sheet-content"></div>
     </div>
 
     <script>
         let map;
         let leafletMarkers = [];
+        let currentLocationMarker = null;
 
-        // 1. モックデータ
+        // アプリの状態管理
+        let state = {
+            currentMarkerId: null,
+            isMultiSelectMode: false,
+            selectedRooms: [],
+            currentRoomNumber: null // 単一選択中の部屋
+        };
+
+        // 1. モックデータ (メモ項目追加)
         const mockData = {
-            polygonCoords: [
-                [35.683, 139.765],
-                [35.683, 139.769],
-                [35.680, 139.769],
-                [35.680, 139.765]
-            ],
+            polygonCoords: [[35.683, 139.765], [35.683, 139.769], [35.680, 139.769], [35.680, 139.765]],
             markers: [
-                { id: "M-001", type: "single", lat: 35.6815, lng: 139.7665, label: "1", status: "未訪問", memo: "鈴木様" },
+                { id: "M-001", type: "single", lat: 35.6815, lng: 139.7665, label: "1", status: "未訪問", memo: "" },
                 { 
                     id: "M-002", type: "apartment", lat: 35.6820, lng: 139.7680, label: "2", name: "グリーンハイツ",
                     rooms: [
-                        { number: "101", status: "未訪問" }, { number: "102", status: "留守" },
-                        { number: "201", status: "会えた" }, { number: "202", status: "未訪問" },
-                        { number: "203", status: "訪問不可" }
+                        { number: "101", status: "未訪問", memo: "" }, { number: "102", status: "留守", memo: "次回午後" },
+                        { number: "201", status: "会えた", memo: "冊子配布" }, { number: "202", status: "未訪問", memo: "" },
+                        { number: "203", status: "訪問不可", memo: "犬注意" }, { number: "301", status: "未訪問", memo: "" },
+                        { number: "302", status: "未訪問", memo: "" }
                     ]
                 },
-                { id: "M-003", type: "single", lat: 35.6805, lng: 139.7675, label: "3", status: "留守", memo: "" }
+                { id: "M-003", type: "single", lat: 35.6805, lng: 139.7675, label: "3", status: "留守", memo: "インターホン鳴らない" }
             ]
         };
 
-        // 2. 地図の初期化処理 (Leaflet.js)
+        // 2. 地図初期化
         window.onload = function() {
-            // 地図を作成し、東京駅周辺を中心に設定
             map = L.map('map', {zoomControl: false}).setView([35.6815, 139.7670], 17);
-
-            // OpenStreetMapのタイル（地図画像）を読み込む
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap contributors'
-            }).addTo(map);
-
-            // 区域ポリゴンの描画
-            L.polygon(mockData.polygonCoords, {
-                color: '#4CAF50',
-                weight: 3,
-                fillColor: '#4CAF50',
-                fillOpacity: 0.15
-            }).addTo(map);
-
-            // ズームボタンの位置を右下に移動
-            L.control.zoom({position: 'bottomright'}).addTo(map);
-
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+            L.polygon(mockData.polygonCoords, { color: '#4CAF50', weight: 3, fillColor: '#4CAF50', fillOpacity: 0.15 }).addTo(map);
+            L.control.zoom({position: 'topright'}).addTo(map);
             drawMarkers();
+
+            // 地図クリックでパネルを閉じる
+            map.on('click', closePanel);
         };
 
-        // ステータスに応じたカラーコードを返す
-        function getStatusColor(status) {
-            if (status === "会えた") return "#9E9E9E";
-            if (status === "留守") return "#FFC107";
-            if (status === "訪問不可") return "#F44336";
-            return "#2196F3"; // 未訪問
+        // 3. 現在地取得 (GPS)
+        function locateUser() {
+            map.locate({setView: true, maxZoom: 18});
+            map.once('locationfound', function(e) {
+                if (currentLocationMarker) map.removeLayer(currentLocationMarker);
+                // 現在地を示す青いドットを描画
+                const locIcon = L.divIcon({ className: 'current-location-icon', iconSize: [16, 16] });
+                currentLocationMarker = L.marker(e.latlng, {icon: locIcon}).addTo(map);
+                
+                // 精度を示す円
+                L.circle(e.latlng, { radius: e.accuracy / 2, color: '#2196F3', fillColor: '#2196F3', fillOpacity: 0.1, weight: 1 }).addTo(map);
+            });
+            map.once('locationerror', function(e) {
+                alert("現在地を取得できませんでした。端末の位置情報設定を確認してください。");
+            });
         }
 
-        // マーカーの描画処理
+        // マーカー色判定
+        function getStatusColor(status) {
+            if (status === "会えた") return "bg-gray";
+            if (status === "留守") return "bg-yellow";
+            if (status === "訪問不可") return "bg-red";
+            return "bg-blue";
+        }
+
+        // マーカー描画
         function drawMarkers() {
-            // 古いマーカーを削除
             leafletMarkers.forEach(m => map.removeLayer(m));
             leafletMarkers = [];
 
             mockData.markers.forEach(markerData => {
                 let pinStatus = "未訪問";
-                let textColor = "white";
-
                 if (markerData.type === "single") {
                     pinStatus = markerData.status;
                 } else if (markerData.type === "apartment") {
-                    const hasUnvisited = markerData.rooms.some(r => r.status === "未訪問");
-                    pinStatus = hasUnvisited ? "未訪問" : "会えた";
+                    const unvisited = markerData.rooms.filter(r => r.status === "未訪問").length;
+                    // すべて訪問済みならグレー、一つでも未訪問があれば青
+                    pinStatus = (unvisited === 0) ? "会えた" : "未訪問";
                 }
 
-                if (pinStatus === "留守") textColor = "black";
+                const bgClass = getStatusColor(pinStatus);
+                // CSSクラスから色を抽出してstyleに適用するハック
+                const colorCode = bgClass === "bg-blue" ? "#2196F3" : bgClass === "bg-gray" ? "#9E9E9E" : bgClass === "bg-yellow" ? "#FFC107" : "#F44336";
+                const textColor = pinStatus === "留守" ? "black" : "white";
 
-                // CSSで作ったカスタムアイコンを作成
                 const customIcon = L.divIcon({
-                    className: 'custom-div-icon',
-                    html: `<div class="custom-marker" style="background-color: ${getStatusColor(pinStatus)}; color: ${textColor}; width: 30px; height: 30px;">
-                               ${markerData.label}
-                           </div>`,
-                    iconSize: [30, 30],
-                    iconAnchor: [15, 15] // アイコンの中心を指定
+                    className: '',
+                    html: `<div class="custom-marker" style="background-color: ${colorCode}; color: ${textColor}; width: 32px; height: 32px;">${markerData.label}</div>`,
+                    iconSize: [32, 32], iconAnchor: [16, 16]
                 });
 
-                // マーカーを地図に配置
                 const marker = L.marker([markerData.lat, markerData.lng], {icon: customIcon}).addTo(map);
-                
-                // クリックイベント
-                marker.on('click', () => {
+                marker.on('click', (e) => {
+                    L.DomEvent.stopPropagation(e); // 地図クリック判定を防止
                     openPanel(markerData);
                 });
-
                 leafletMarkers.push(marker);
             });
         }
 
-        // 3. UI操作
+        // 4. パネルUI描画ロジック
         const sheet = document.getElementById('bottom-sheet');
         const content = document.getElementById('sheet-content');
 
         function closePanel() {
             sheet.classList.remove('open');
+            state.isMultiSelectMode = false;
+            state.selectedRooms = [];
         }
 
         function openPanel(markerData) {
+            state.currentMarkerId = markerData.id;
+            state.isMultiSelectMode = false;
+            state.selectedRooms = [];
+            state.currentRoomNumber = null;
+            
             sheet.classList.add('open');
+            renderPanelContent(markerData);
+        }
+
+        // 表示の出し分け
+        function renderPanelContent(markerData) {
             if (markerData.type === "single") {
-                renderRecordForm(markerData.id, null, markerData.label, markerData.memo, markerData.status);
+                renderRecordForm(markerData.label, markerData.status, markerData.memo);
             } else if (markerData.type === "apartment") {
-                renderApartmentRooms(markerData);
+                if (state.currentRoomNumber) {
+                    const room = markerData.rooms.find(r => r.number === state.currentRoomNumber);
+                    renderRecordForm(`部屋: ${room.number}`, room.status, room.memo, true);
+                } else {
+                    renderApartmentRooms(markerData);
+                }
             }
         }
 
+        // 【機能追加】アパート部屋一覧（一括選択モード対応）
         function renderApartmentRooms(markerData) {
-            let html = `<h3 class="panel-title">${markerData.name} (通し番号: ${markerData.label})</h3>`;
-            html += `<p style="font-size: 14px; color: #666;">部屋を選択して記録をつけてください。</p><div class="room-grid">`;
+            let html = `
+                <div class="panel-header">
+                    <div>
+                        <h3 class="panel-title" style="margin-bottom: 5px;">${markerData.name}</h3>
+                        <span style="font-size: 14px; color: #666;">通し番号: ${markerData.label}</span>
+                    </div>
+                    <div class="close-btn" onclick="closePanel()">×</div>
+                </div>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <span style="font-size: 14px;">${state.isMultiSelectMode ? "記録する部屋を複数タップしてください" : "部屋を選択してください"}</span>
+                    <button class="mode-toggle ${state.isMultiSelectMode ? 'active' : ''}" onclick="toggleMultiSelect()">
+                        ☑ 一括記録モード
+                    </button>
+                </div>
+                
+                <div class="room-grid">
+            `;
+
             markerData.rooms.forEach(room => {
-                let colorClass = getColorClass(room.status);
-                html += `<button class="room-btn ${colorClass}" onclick="renderRecordForm('${markerData.id}', '${room.number}', '${markerData.label}', '', '${room.status}')">${room.number}</button>`;
+                let colorClass = getStatusColor(room.status);
+                let isSelected = state.selectedRooms.includes(room.number) ? "selected" : "";
+                html += `<button class="room-btn ${colorClass} ${isSelected}" onclick="handleRoomClick('${room.number}')">${room.number}</button>`;
             });
+
             html += `</div>`;
-            content.innerHTML = html;
-        }
 
-        function renderRecordForm(markerId, roomNumber, label, memo, currentStatus) {
-            const targetName = roomNumber ? `部屋: ${roomNumber}` : `通し番号: ${label} ${memo ? `(${memo})` : ''}`;
-            let html = ``;
-            if (roomNumber) {
-                html += `<button class="back-btn" onclick="backToRooms('${markerId}')">← 部屋一覧に戻る</button>`;
+            // 一括選択モード中で、1つ以上選択されている場合にアクションボタンを表示
+            if (state.isMultiSelectMode && state.selectedRooms.length > 0) {
+                html += `
+                    <div style="border-top: 1px solid #eee; padding-top: 15px;">
+                        <p style="margin: 0 0 10px 0; font-weight: bold;">選択中 (${state.selectedRooms.length}部屋) の結果を一括登録:</p>
+                        <div class="action-grid">
+                            <button class="action-btn bg-gray" onclick="saveRecord('会えた')">まとめて 会えた</button>
+                            <button class="action-btn bg-yellow" onclick="saveRecord('留守')">まとめて 留守</button>
+                        </div>
+                    </div>
+                `;
             }
-            html += `<h3 class="panel-title">${targetName}</h3>`;
-            html += `<p style="margin: 0 0 15px 0; color: #666;">現在の状態: <strong style="color: #333; font-size: 18px;">${currentStatus}</strong></p>`;
-            html += `<div class="action-grid">
-                        <button class="action-btn color-blue" onclick="saveRecord('${markerId}', '${roomNumber}', '未訪問')">リセット</button>
-                        <button class="action-btn color-gray" onclick="saveRecord('${markerId}', '${roomNumber}', '会えた')">会えた</button>
-                        <button class="action-btn color-yellow" onclick="saveRecord('${markerId}', '${roomNumber}', '留守')">留守</button>
-                        <button class="action-btn color-red" onclick="saveRecord('${markerId}', '${roomNumber}', '訪問不可')">訪問不可</button>
-                     </div>`;
+
             content.innerHTML = html;
         }
 
-        function backToRooms(markerId) {
-            const markerData = mockData.markers.find(m => m.id === markerId);
+        // 部屋ボタン押下時の挙動（モードで分岐）
+        function handleRoomClick(roomNum) {
+            if (state.isMultiSelectMode) {
+                const idx = state.selectedRooms.indexOf(roomNum);
+                if (idx > -1) {
+                    state.selectedRooms.splice(idx, 1); // 選択解除
+                } else {
+                    state.selectedRooms.push(roomNum); // 選択追加
+                }
+                const markerData = mockData.markers.find(m => m.id === state.currentMarkerId);
+                renderApartmentRooms(markerData);
+            } else {
+                // 通常モード：単一記録画面へ遷移
+                state.currentRoomNumber = roomNum;
+                const markerData = mockData.markers.find(m => m.id === state.currentMarkerId);
+                renderPanelContent(markerData);
+            }
+        }
+
+        function toggleMultiSelect() {
+            state.isMultiSelectMode = !state.isMultiSelectMode;
+            state.selectedRooms = []; // 切り替え時にリセット
+            const markerData = mockData.markers.find(m => m.id === state.currentMarkerId);
             renderApartmentRooms(markerData);
         }
 
-        function getColorClass(status) {
-            if (status === "会えた") return "color-gray";
-            if (status === "留守") return "color-yellow";
-            if (status === "訪問不可") return "color-red";
-            return "color-blue";
+        // 【機能追加】記録フォーム（メモ入力欄追加）
+        function renderRecordForm(title, currentStatus, memo, isApartment = false) {
+            let html = `
+                <div class="panel-header" style="margin-bottom: 5px;">
+                    <h3 class="panel-title">${title}</h3>
+                    <div class="close-btn" onclick="closePanel()">×</div>
+                </div>
+            `;
+            
+            if (isApartment) {
+                html += `<button class="back-btn" onclick="backToRooms()">← 一覧に戻る</button>`;
+            }
+
+            html += `
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                    <span style="color: #666;">現在の状態:</span>
+                    <span style="padding: 4px 10px; border-radius: 4px; font-weight: bold; color: white; font-size: 14px;" class="${getStatusColor(currentStatus)}">
+                        ${currentStatus}
+                    </span>
+                </div>
+
+                <div class="action-grid">
+                    <button class="action-btn bg-blue" onclick="saveRecord('未訪問')">リセット</button>
+                    <button class="action-btn bg-gray" onclick="saveRecord('会えた')">会えた</button>
+                    <button class="action-btn bg-yellow" onclick="saveRecord('留守')">留守</button>
+                    <button class="action-btn bg-red" onclick="saveRecord('訪問不可')">訪問不可</button>
+                </div>
+
+                <textarea id="memo-input" class="memo-area" placeholder="メモを入力 (任意)...">${memo}</textarea>
+                
+                <button onclick="saveMemoOnly()" style="width: 100%; padding: 15px; margin-top: 15px; background-color: white; border: 2px solid #2E7D32; color: #2E7D32; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                    状態は変えずにメモだけ保存
+                </button>
+            `;
+            
+            content.innerHTML = html;
         }
 
-        function saveRecord(markerId, roomNumber, newStatus) {
-            const markerData = mockData.markers.find(m => m.id === markerId);
-            if (roomNumber && roomNumber !== 'null') {
-                const room = markerData.rooms.find(r => r.number === roomNumber);
-                if (room) room.status = newStatus;
-                renderApartmentRooms(markerData);
-            } else {
+        function backToRooms() {
+            state.currentRoomNumber = null;
+            const markerData = mockData.markers.find(m => m.id === state.currentMarkerId);
+            renderPanelContent(markerData);
+        }
+
+        // 5. データ保存処理
+        function saveRecord(newStatus) {
+            const markerData = mockData.markers.find(m => m.id === state.currentMarkerId);
+            
+            if (markerData.type === "single") {
+                // 戸建て保存
                 markerData.status = newStatus;
+                markerData.memo = document.getElementById('memo-input').value;
                 closePanel();
+            } else if (markerData.type === "apartment") {
+                if (state.isMultiSelectMode) {
+                    // 一括保存
+                    state.selectedRooms.forEach(roomNum => {
+                        const room = markerData.rooms.find(r => r.number === roomNum);
+                        if (room) room.status = newStatus;
+                    });
+                    state.isMultiSelectMode = false;
+                    state.selectedRooms = [];
+                    renderApartmentRooms(markerData);
+                } else {
+                    // 単一部屋保存
+                    const room = markerData.rooms.find(r => r.number === state.currentRoomNumber);
+                    if (room) {
+                        room.status = newStatus;
+                        room.memo = document.getElementById('memo-input').value;
+                    }
+                    backToRooms(); // 保存後は一覧に戻る
+                }
             }
-            drawMarkers();
-            console.log(`[記録保存] ID:${markerId}, Room:${roomNumber}, 結果:${newStatus}`);
+            drawMarkers(); // 地図上の色を更新
+        }
+
+        // メモだけを保存する処理
+        function saveMemoOnly() {
+            const markerData = mockData.markers.find(m => m.id === state.currentMarkerId);
+            const memoValue = document.getElementById('memo-input').value;
+
+            if (markerData.type === "single") {
+                markerData.memo = memoValue;
+                closePanel();
+            } else {
+                const room = markerData.rooms.find(r => r.number === state.currentRoomNumber);
+                if (room) room.memo = memoValue;
+                backToRooms();
+            }
         }
     </script>
 </body>
