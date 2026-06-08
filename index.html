@@ -1,10 +1,15 @@
-<!-- File: mock_app.html -->
+<!-- File: mock_app_osm.html -->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>会衆区域管理システム モックアップ</title>
+    <title>会衆区域管理システム モックアップ (APIキー不要版)</title>
+    
+    <!-- Leaflet.js (無料地図ライブラリ) の読み込み -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <style>
         /* CSS: モバイルファーストのデザイン */
         body, html {
@@ -16,13 +21,12 @@
             background-color: #f0f0f0;
         }
 
-        /* 地図の表示エリア（全画面） */
         #map {
             width: 100%;
             height: 100%;
+            z-index: 1; /* パネルより下にする */
         }
 
-        /* 画面上部のヘッダー */
         #header {
             position: absolute;
             top: 0;
@@ -38,19 +42,18 @@
             z-index: 10;
         }
 
-        /* 画面下部からスライドアップするパネル */
         #bottom-sheet {
             position: absolute;
-            bottom: -100%; /* 初期状態は画面外 */
+            bottom: -100%;
             left: 0;
             width: 100%;
             background-color: white;
             border-top-left-radius: 20px;
             border-top-right-radius: 20px;
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
-            transition: bottom 0.3s ease-in-out;
+            box-shadow: 0 -5px 15px rgba(0,0,0,0.3);
+            transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             z-index: 20;
-            max-height: 70%;
+            max-height: 80%;
             display: flex;
             flex-direction: column;
         }
@@ -59,16 +62,14 @@
             bottom: 0;
         }
 
-        /* パネル上部のドラッグハンドル（装飾） */
         .sheet-handle {
             width: 40px;
             height: 5px;
             background-color: #ccc;
             border-radius: 5px;
-            margin: 10px auto;
+            margin: 12px auto;
         }
 
-        /* パネルのコンテンツエリア */
         #sheet-content {
             padding: 0 20px 20px 20px;
             overflow-y: auto;
@@ -83,14 +84,12 @@
             padding-bottom: 10px;
         }
 
-        /* 部屋ボタンのグリッド配置 */
         .room-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
             gap: 10px;
         }
 
-        /* 部屋ボタン */
         .room-btn {
             padding: 15px 5px;
             border: none;
@@ -100,9 +99,9 @@
             font-size: 16px;
             cursor: pointer;
             text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
-        /* 記録用のアクションボタン */
         .action-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -118,32 +117,48 @@
             font-size: 18px;
             font-weight: bold;
             cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
 
         /* ステータスカラー定義 */
-        .color-blue { background-color: #2196F3; } /* 未訪問 */
-        .color-gray { background-color: #9E9E9E; } /* 会えた */
-        .color-yellow { background-color: #FFC107; color: #333 !important;} /* 留守 */
-        .color-red { background-color: #F44336; } /* 訪問不可 */
+        .color-blue { background-color: #2196F3; }
+        .color-gray { background-color: #9E9E9E; }
+        .color-yellow { background-color: #FFC107; color: #333 !important;}
+        .color-red { background-color: #F44336; }
 
         .back-btn {
             background-color: transparent;
             color: #4CAF50;
-            border: 1px solid #4CAF50;
+            border: 2px solid #4CAF50;
             padding: 8px 15px;
             border-radius: 20px;
             cursor: pointer;
             margin-bottom: 15px;
             font-weight: bold;
+            display: block;
         }
 
         .close-btn {
             position: absolute;
-            top: 10px;
-            right: 20px;
-            font-size: 24px;
+            top: 5px;
+            right: 15px;
+            font-size: 28px;
             color: #999;
             cursor: pointer;
+            padding: 5px;
+        }
+        
+        /* カスタムマーカー用のCSS */
+        .custom-marker {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 50%;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            border: 2px solid white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
         }
     </style>
 </head>
@@ -158,140 +173,109 @@
     <div id="bottom-sheet">
         <div class="sheet-handle"></div>
         <div class="close-btn" onclick="closePanel()">×</div>
-        <div id="sheet-content">
-            <!-- JSで動的にコンテンツが生成されます -->
-        </div>
+        <div id="sheet-content"></div>
     </div>
-
-    <!-- Google Maps API (YOUR_API_KEYを実際のキーに書き換えてください。キー無しでもDevモードで動作確認可能です) -->
-    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap" async defer></script>
 
     <script>
         let map;
-        let googleMarkers = [];
+        let leafletMarkers = [];
 
-        // 1. モックデータ（データベースの代わり）
+        // 1. モックデータ
         const mockData = {
-            territoryId: "01",
-            // 区域のポリゴン座標（東京駅周辺のダミー）
             polygonCoords: [
-                { lat: 35.683, lng: 139.765 },
-                { lat: 35.683, lng: 139.769 },
-                { lat: 35.680, lng: 139.769 },
-                { lat: 35.680, lng: 139.765 }
+                [35.683, 139.765],
+                [35.683, 139.769],
+                [35.680, 139.769],
+                [35.680, 139.765]
             ],
-            // ピン（マーカー）のデータ
             markers: [
-                {
-                    id: "M-001",
-                    type: "single", // 戸建て
-                    lat: 35.6815,
-                    lng: 139.7665,
-                    label: "1",
-                    status: "未訪問", // 未訪問, 会えた, 留守, 訪問不可
-                    memo: "鈴木様"
-                },
-                {
-                    id: "M-002",
-                    type: "apartment", // 集合住宅
-                    lat: 35.6820,
-                    lng: 139.7680,
-                    label: "2",
-                    name: "グリーンハイツ",
-                    // 部屋のリスト
+                { id: "M-001", type: "single", lat: 35.6815, lng: 139.7665, label: "1", status: "未訪問", memo: "鈴木様" },
+                { 
+                    id: "M-002", type: "apartment", lat: 35.6820, lng: 139.7680, label: "2", name: "グリーンハイツ",
                     rooms: [
-                        { number: "101", status: "未訪問" },
-                        { number: "102", status: "留守" },
-                        { number: "201", status: "会えた" },
-                        { number: "202", status: "未訪問" },
+                        { number: "101", status: "未訪問" }, { number: "102", status: "留守" },
+                        { number: "201", status: "会えた" }, { number: "202", status: "未訪問" },
                         { number: "203", status: "訪問不可" }
                     ]
                 },
-                {
-                    id: "M-003",
-                    type: "single",
-                    lat: 35.6805,
-                    lng: 139.7675,
-                    label: "3",
-                    status: "留守",
-                    memo: ""
-                }
+                { id: "M-003", type: "single", lat: 35.6805, lng: 139.7675, label: "3", status: "留守", memo: "" }
             ]
         };
 
-        // 2. 地図の初期化処理
-        function initMap() {
-            // 地図の作成
-            map = new google.maps.Map(document.getElementById('map'), {
-                center: { lat: 35.6815, lng: 139.7670 },
-                zoom: 17,
-                disableDefaultUI: true, // 余計なボタンを消してモバイル向けに
-                zoomControl: true
-            });
+        // 2. 地図の初期化処理 (Leaflet.js)
+        window.onload = function() {
+            // 地図を作成し、東京駅周辺を中心に設定
+            map = L.map('map', {zoomControl: false}).setView([35.6815, 139.7670], 17);
+
+            // OpenStreetMapのタイル（地図画像）を読み込む
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
 
             // 区域ポリゴンの描画
-            const territoryPolygon = new google.maps.Polygon({
-                paths: mockData.polygonCoords,
-                strokeColor: "#4CAF50",
-                strokeOpacity: 0.8,
-                strokeWeight: 3,
-                fillColor: "#4CAF50",
+            L.polygon(mockData.polygonCoords, {
+                color: '#4CAF50',
+                weight: 3,
+                fillColor: '#4CAF50',
                 fillOpacity: 0.15
-            });
-            territoryPolygon.setMap(map);
+            }).addTo(map);
 
-            // マーカーの描画
+            // ズームボタンの位置を右下に移動
+            L.control.zoom({position: 'bottomright'}).addTo(map);
+
             drawMarkers();
+        };
+
+        // ステータスに応じたカラーコードを返す
+        function getStatusColor(status) {
+            if (status === "会えた") return "#9E9E9E";
+            if (status === "留守") return "#FFC107";
+            if (status === "訪問不可") return "#F44336";
+            return "#2196F3"; // 未訪問
         }
 
-        // ステータスに応じたピンの色（アイコンURL）を返す
-        function getIconUrl(status) {
-            let color = "blue"; // デフォルト: 未訪問
-            if (status === "会えた") color = "gray";
-            if (status === "留守") color = "yellow";
-            if (status === "訪問不可") color = "red";
-            return `http://maps.google.com/mapfiles/ms/icons/${color}-dot.png`;
-        }
-
-        // マーカーを地図上に配置する
+        // マーカーの描画処理
         function drawMarkers() {
-            // 古いマーカーをクリア
-            googleMarkers.forEach(m => m.setMap(null));
-            googleMarkers = [];
+            // 古いマーカーを削除
+            leafletMarkers.forEach(m => map.removeLayer(m));
+            leafletMarkers = [];
 
             mockData.markers.forEach(markerData => {
-                // 集合住宅の場合は、部屋のステータスを総合してピンの色を決めるロジック（簡易版）
                 let pinStatus = "未訪問";
+                let textColor = "white";
+
                 if (markerData.type === "single") {
                     pinStatus = markerData.status;
                 } else if (markerData.type === "apartment") {
-                    // 全ての部屋が「未訪問」以外ならグレーにする等のロジックが可能ですが、モックでは代表色として青に固定、または一番多いステータスにします
-                    // ここでは簡単に、未訪問の部屋が1つでもあれば青とします
                     const hasUnvisited = markerData.rooms.some(r => r.status === "未訪問");
                     pinStatus = hasUnvisited ? "未訪問" : "会えた";
                 }
 
-                const marker = new google.maps.Marker({
-                    position: { lat: markerData.lat, lng: markerData.lng },
-                    map: map,
-                    icon: getIconUrl(pinStatus),
-                    label: {
-                        text: markerData.label,
-                        color: pinStatus === "留守" ? "black" : "white",
-                        fontWeight: "bold"
-                    }
+                if (pinStatus === "留守") textColor = "black";
+
+                // CSSで作ったカスタムアイコンを作成
+                const customIcon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `<div class="custom-marker" style="background-color: ${getStatusColor(pinStatus)}; color: ${textColor}; width: 30px; height: 30px;">
+                               ${markerData.label}
+                           </div>`,
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 15] // アイコンの中心を指定
                 });
 
-                // マーカークリック時のイベント
-                marker.addListener('click', () => {
+                // マーカーを地図に配置
+                const marker = L.marker([markerData.lat, markerData.lng], {icon: customIcon}).addTo(map);
+                
+                // クリックイベント
+                marker.on('click', () => {
                     openPanel(markerData);
                 });
 
-                googleMarkers.push(marker);
+                leafletMarkers.push(marker);
             });
         }
 
-        // 3. UI操作（パネルの開閉と描画）
+        // 3. UI操作
         const sheet = document.getElementById('bottom-sheet');
         const content = document.getElementById('sheet-content');
 
@@ -301,65 +285,46 @@
 
         function openPanel(markerData) {
             sheet.classList.add('open');
-            
             if (markerData.type === "single") {
-                // 戸建ての場合は直接記録画面を表示
                 renderRecordForm(markerData.id, null, markerData.label, markerData.memo, markerData.status);
             } else if (markerData.type === "apartment") {
-                // 集合住宅の場合は部屋一覧を表示
                 renderApartmentRooms(markerData);
             }
         }
 
-        // 集合住宅の部屋一覧を描画
         function renderApartmentRooms(markerData) {
             let html = `<h3 class="panel-title">${markerData.name} (通し番号: ${markerData.label})</h3>`;
-            html += `<p style="font-size: 14px; color: #666;">部屋を選択して記録をつけてください。</p>`;
-            html += `<div class="room-grid">`;
-
+            html += `<p style="font-size: 14px; color: #666;">部屋を選択して記録をつけてください。</p><div class="room-grid">`;
             markerData.rooms.forEach(room => {
                 let colorClass = getColorClass(room.status);
-                html += `
-                    <button class="room-btn ${colorClass}" onclick="renderRecordForm('${markerData.id}', '${room.number}', '${markerData.label}', '', '${room.status}')">
-                        ${room.number}
-                    </button>
-                `;
+                html += `<button class="room-btn ${colorClass}" onclick="renderRecordForm('${markerData.id}', '${room.number}', '${markerData.label}', '', '${room.status}')">${room.number}</button>`;
             });
-
             html += `</div>`;
             content.innerHTML = html;
         }
 
-        // 記録入力フォームを描画
         function renderRecordForm(markerId, roomNumber, label, memo, currentStatus) {
             const targetName = roomNumber ? `部屋: ${roomNumber}` : `通し番号: ${label} ${memo ? `(${memo})` : ''}`;
-            
             let html = ``;
-            // アパートの部屋の場合は「戻る」ボタンを表示
             if (roomNumber) {
                 html += `<button class="back-btn" onclick="backToRooms('${markerId}')">← 部屋一覧に戻る</button>`;
             }
-
             html += `<h3 class="panel-title">${targetName}</h3>`;
-            html += `<p style="margin: 0; color: #666;">現在の状態: <strong>${currentStatus}</strong></p>`;
-            
+            html += `<p style="margin: 0 0 15px 0; color: #666;">現在の状態: <strong style="color: #333; font-size: 18px;">${currentStatus}</strong></p>`;
             html += `<div class="action-grid">
                         <button class="action-btn color-blue" onclick="saveRecord('${markerId}', '${roomNumber}', '未訪問')">リセット</button>
                         <button class="action-btn color-gray" onclick="saveRecord('${markerId}', '${roomNumber}', '会えた')">会えた</button>
                         <button class="action-btn color-yellow" onclick="saveRecord('${markerId}', '${roomNumber}', '留守')">留守</button>
                         <button class="action-btn color-red" onclick="saveRecord('${markerId}', '${roomNumber}', '訪問不可')">訪問不可</button>
                      </div>`;
-            
             content.innerHTML = html;
         }
 
-        // アパートの部屋一覧に戻る処理
         function backToRooms(markerId) {
             const markerData = mockData.markers.find(m => m.id === markerId);
             renderApartmentRooms(markerData);
         }
 
-        // ステータス文字列からCSSクラスを取得
         function getColorClass(status) {
             if (status === "会えた") return "color-gray";
             if (status === "留守") return "color-yellow";
@@ -367,29 +332,18 @@
             return "color-blue";
         }
 
-        // 4. データ保存処理（モックデータの更新と再描画）
         function saveRecord(markerId, roomNumber, newStatus) {
-            // 対象のデータを検索して更新
             const markerData = mockData.markers.find(m => m.id === markerId);
-            
             if (roomNumber && roomNumber !== 'null') {
-                // 集合住宅の部屋の更新
                 const room = markerData.rooms.find(r => r.number === roomNumber);
                 if (room) room.status = newStatus;
-                // 更新後、部屋一覧に戻る
                 renderApartmentRooms(markerData);
             } else {
-                // 戸建ての更新
                 markerData.status = newStatus;
-                // 更新後、パネルを閉じる
                 closePanel();
             }
-
-            // 地図上のピンの色を最新状態に更新
             drawMarkers();
-
-            // 実際のアプリではここでGAS等のバックエンドと非同期通信(fetch等)を行います
-            console.log(`[Data Saved] ID:${markerId}, Room:${roomNumber}, Status:${newStatus}`);
+            console.log(`[記録保存] ID:${markerId}, Room:${roomNumber}, 結果:${newStatus}`);
         }
     </script>
 </body>
